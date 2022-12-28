@@ -1,9 +1,11 @@
+# -*- coding: utf-8 -*-
+# Главный модуль бота
+
 import telebot
 import requests
 from bs4 import BeautifulSoup
-import lxml
 
-bot = telebot.TeleBot("5964599176:AAFMY94KAXcOdBx1d-Xfi_XMMUWq468HyMg")
+bot = telebot.TeleBot("TOKEN")
 
 bot_name = 'Курсобот'
 
@@ -11,49 +13,45 @@ url = 'https://www.cbr-xml-daily.ru/daily_utf8.xml'
 
 response = requests.get(url)
 
-soup = BeautifulSoup(response.text, 'lxml')
+response.encoding = 'utf-8'
 
-curlist = []
+soup = BeautifulSoup(response.text, 'xml')
 
-currencies = soup.find_all("cube", currency=True)
+curlist = str(soup.find_all('CharCode')).replace('<CharCode>', '').replace('</CharCode>', '').replace('[', '').replace(']', '')
 
-print(currencies)
+curlist = list(curlist.split(', '))
 
-for i in currencies:
+exchlist = str(soup.find_all('Value')).replace('<Value>', '').replace('</Value>', '').replace('[', '').replace(']', '')
+
+exchlist = list(exchlist.split(', '))
     
-    for x in i('cube'):
-        
-        for y in x:
-            
-            if y.name == 'cube':
+namelist = str(soup.find_all('Name')).replace('<Name>', '').replace('</Name>', '').replace('[', '').replace(']', '')
 
-                curlist.append(y[currencies])
+namelist = list(namelist.split(', '))
 
-print(curlist)
+reslist = [(x,y,z) for x,y,z in zip(curlist, exchlist, namelist)]
 
 def command_handler(message):
 
     """Функция обрабатывает ввод пользователя"""
 
     global currency, curlist
-    
+
     if currency == False:
 
         return False
 
     if currency == True:
 
-        for k in curlist:
-
-            if message.text == curlist[k]:
+        if any(obj == message.text for obj in curlist):
 
                 return True
 
-    else:
-        
-        bot.send_message(message.chat.id,f'{message.from_user.first_name}, я не знаю такой валюты, попробуй еще раз!')
-
-        return False
+        else:
+            
+            bot.send_message(message.chat.id,f'{message.from_user.first_name}, в списке нет такой валюты, попробуй еще раз!')
+            
+            return False
 
 @bot.message_handler(commands=['start'])
 def start_message(message) -> str:
@@ -73,17 +71,37 @@ def help_command(message) -> str:
        'После этого введи код валюты, например, USD или EUR.\n' +
        'В ответ отобразится информация по валюте, в виде ее обменного курса покупки в рублях на текущую дату.')
 
+@bot.message_handler(commands=['currency'])
+def help_command(message) -> str:
+
+    """Запуск поиска курса обмена"""
+
+    global currency, curlist
+
+    info = ', '.join(curlist)
+
+    bot.send_message(message.chat.id,f'Для отображения курса валюты напиши боту код валюты. На данный момент доступны следующие коды валют: {info}.')
+
     currency = True
 
 @bot.message_handler(func=command_handler)
-def currency(message):
+def course_currency(message):
     
-    
-    
-    bot.send_message(message.chat.id,f'{message.from_user.first_name}, чтобы узнать курс другой валюты, снова выполни команду /currency и код валюты.')
+    """Обработчик команд пользователя"""
 
+    global currency, reslist
+
+    course = list(filter(lambda k: message.text in k, reslist))[0]
+
+    name = str(course[2])
+
+    course = round(float(str(course[1]).replace(',', '.')), 2)
+
+    bot.send_message(message.chat.id,f'Курс {name} составляет {course} ₽.')
+
+    bot.send_message(message.chat.id,f'Для повторного запроса, выполни команду /currency.')
+ 
     currency = False
-
 
 print('Telegram bot server is in running state...')
 
